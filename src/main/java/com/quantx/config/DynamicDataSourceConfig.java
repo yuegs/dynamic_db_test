@@ -1,18 +1,18 @@
-package com.quantx.config;// DynamicDataSourceConfig.java
+package com.quantx.config;
 
 import com.baomidou.dynamic.datasource.DynamicRoutingDataSource;
+import com.baomidou.dynamic.datasource.creator.DataSourceProperty;
+import com.baomidou.dynamic.datasource.creator.DefaultDataSourceCreator;
 import com.baomidou.dynamic.datasource.provider.AbstractDataSourceProvider;
 import com.baomidou.dynamic.datasource.provider.DynamicDataSourceProvider;
-import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.DataSourceProperty;
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.DynamicDataSourceProperties;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import javax.sql.DataSource;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -25,6 +25,9 @@ public class DynamicDataSourceConfig {
     @Autowired
     private DynamicDataSourceProperties properties;
 
+    @Autowired
+    private DefaultDataSourceCreator dataSourceCreator;
+
     /**
      * 创建动态数据源提供者
      *
@@ -32,7 +35,7 @@ public class DynamicDataSourceConfig {
      */
     @Bean
     public DynamicDataSourceProvider dynamicDataSourceProvider() {
-        return new AbstractDataSourceProvider() {
+        return new AbstractDataSourceProvider(dataSourceCreator) {
             @Override
             public Map<String, DataSource> loadDataSources() {
                 return createDataSourceMap(properties.getDatasource());
@@ -48,25 +51,15 @@ public class DynamicDataSourceConfig {
      */
     @Primary
     @Bean
-    public DataSource dataSource() {
-        DynamicRoutingDataSource dataSource = new DynamicRoutingDataSource();
-
-        Map<String, DataSourceProperty> dataSourcePropertiesMap = properties.getDatasource();
-
-        // 设置主数据源
-        String primary = properties.getPrimary();
-        dataSource.setPrimary(primary);
-
-        // 添加所有数据源
-        for (Map.Entry<String, DataSourceProperty> entry : dataSourcePropertiesMap.entrySet()) {
-            String name = entry.getKey();
-            DataSource ds = createDataSource(entry.getValue());
-            dataSource.addDataSource(name, ds);
-        }
-
+    public DataSource dataSource(List<DynamicDataSourceProvider> providers) {
+        DynamicRoutingDataSource dataSource = new DynamicRoutingDataSource(providers);
+        dataSource.setPrimary(properties.getPrimary());
+        dataSource.setStrict(properties.getStrict());
+        dataSource.setStrategy(properties.getStrategy());
+        dataSource.setP6spy(properties.getP6spy());
+        dataSource.setSeata(properties.getSeata());
         return dataSource;
     }
-
     /**
      * 根据配置属性创建数据源映射
      *
@@ -77,23 +70,7 @@ public class DynamicDataSourceConfig {
         return propertiesMap.entrySet().stream()
                 .collect(java.util.stream.Collectors.toMap(
                         Map.Entry::getKey,
-                        entry -> createDataSource(entry.getValue())
+                        entry -> dataSourceCreator.createDataSource(entry.getValue())
                 ));
-    }
-
-
-    /**
-     * 根据单个数据源配置属性创建数据源对象
-     *
-     * @param property 数据源配置属性
-     * @return 数据源对象
-     */
-    private DataSource createDataSource(DataSourceProperty property) {
-        DriverManagerDataSource dataSource = new DriverManagerDataSource();
-        dataSource.setDriverClassName(property.getDriverClassName());
-        dataSource.setUrl(property.getUrl());
-        dataSource.setUsername(property.getUsername());
-        dataSource.setPassword(property.getPassword());
-        return dataSource;
     }
 }
